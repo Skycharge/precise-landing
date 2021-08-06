@@ -422,14 +422,13 @@ def func1(X, loc):
 # grad is probably wrong, check it later
 # btw it works fine without it
 # this shit probably good if we have some anchors with non zero z coordinate
-def grad_func1(X, la, lb, lc, ld):
-    na = np.linalg.norm(X - A)
-    nb = np.linalg.norm(X - B)
-    nc = np.linalg.norm(X - C)
-    nd = np.linalg.norm(X - D)
-
-    ret = 2 * (1 - la / na) * (X - A) + 2 * (1 - lb / nb) * (X - B) + \
-          2 * (1 - lc / nc) * (X - C) + 2 * (1 - ld / nd) * (X - D)
+def grad_func1(X, loc):
+    ret = np.zeros(len(X))
+    for anch in loc["anchors"]:
+        anchor_pos = np.array([anch["pos"]["x"], anch["pos"]["y"], anch["pos"]["z"]], dtype=np.float64)
+        dist = anch["dist"]["dist"]
+        n = np.linalg.norm(X - anchor_pos)
+        ret += 2 * (1 - dist/n) * (X - anchor_pos)
 
     return ret
 
@@ -474,8 +473,8 @@ def calc_pos(X0, loc):
     upb = [np.inf, np.inf, np.inf]
 
     start = time.time()
-    #res = least_squares(func1, X0, loss='cauchy', f_scale=0.001, bounds=(lowb, upb),
-    res = least_squares(func1, X0, bounds=(lowb, upb),
+    res = least_squares(func1, X0, jac=grad_func1, loss='cauchy', f_scale=0.001, bounds=(lowb, upb),
+    #res = least_squares(func1, X0, jac=grad_func1, bounds=(lowb, upb),
                         #args=(la, lb, lc, ld), verbose=1)
                         args=[loc], verbose=0)
 
