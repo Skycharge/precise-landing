@@ -536,6 +536,115 @@ def calc_pos(X0, loc):
     #res = minimize(func1, X0, method='BFGS', options={'disp': True}, args=(la, lb, lc, ld))
     return res.x
 
+def calc_pos_pyramid(loc):
+    start = time.time()
+
+    a = 0.64
+    la = -1
+    lb = -1
+    lc = -1
+    for anch in loc["anchors"]:
+        if anch['dist']['addr'] == 0x28b9:
+            la = anch['dist']['dist']
+        if anch['dist']['addr'] == 0x262d:
+            lb = anch['dist']['dist']
+        if anch['dist']['addr'] == 0x260f:
+            lc = anch['dist']['dist']
+
+    try:
+        if (a**2 + lc**2 - la**2 < 0) and (a**2 + la**2 - lb**2 < 0) and \
+                (a**2 + la**2 - lc**2 > 0) and (a**2 + lb**2 - la**2 > 0):
+
+            print("case1, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (lb**2 - la**2 - a**2)
+            om = a + 1 / (2 * a) * (la**2 - lc**2 - a**2)
+            oh = math.sqrt(lc**2 - on**2 - (om - a)**2)
+            res = [-on, om, oh]
+
+        elif (a**2 + lc**2 - la**2 < 0) and (a**2 + la**2 - lc**2 > 0) and \
+                (a**2 + la**2 - lb**2 > 0) and (a**2 + lb**2 - la**2 > 0):
+
+            print("case 2, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (la**2 - lb**2 + a**2)
+            om = a + 1 / (2 * a) * (la**2 - lc**2 - a**2)
+            oh = math.sqrt(lc**2 - on**2 - (om - a)**2)
+            res = [on, om, oh]
+
+        elif (a**2 + lb**2 - la**2 < 0) and (a**2 + lc**2 - la**2 < 0) and \
+                (a**2 + la**2 - lb**2 > 0) and (a**2 + la**2 - lc**2 > 0):
+
+            print("case 3, la %f lb %f lc %f" % (la, lb, lc))
+            on = a + 1 / (2 * a) * (la**2 - lb**2 - a**2)
+            om = a + 1 / (2 * a) * (la**2 - lc**2 - a**2)
+            oh = math.sqrt(lc**2 - on**2 - om**2)
+            res = [on, om, oh]
+
+        elif (a**2 + la**2 - lb**2 < 0) and (a**2 + lb**2 - la**2 > 0) and \
+                (a**2 + la**2 - lc**2 > 0) and (a**2 + lc**2 - la**2 > 0):
+
+            print("case 4, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (lb**2 - la**2 - a**2)
+            om = 1 / (2 * a) * (la**2 - lc**2 + a**2)
+            oh = math.sqrt(la**2 - on**2 - om**2)
+            res = [-on, om, oh]
+
+        elif (a**2 + lb**2 - la**2 > 0) and (a**2 + la**2 - lb**2 > 0) and \
+                (a**2 + lc**2 - la**2 > 0) and (a**2 + la**2 - lc**2 > 0):
+
+            print("case 5, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (la**2 - lb**2 + a**2)
+            om = 1 / (2 * a) * (la**2 - lc**2 + a**2)
+            oh = math.sqrt(la**2 - on**2 - om**2)
+            res = [on, om, oh]
+
+        elif (a**2 + lb**2 - la**2 < 0) and (a**2 + la**2 - lb**2 > 0) and \
+                (a**2 + lc**2 - la**2 > 0) and (a**2 + la**2 - lc**2 > 0):
+
+            print("case 6, la %f lb %f lc %f" % (la, lb, lc))
+            on = a + 1 / (2 * a) * (la**2 - lb**2 - a**2)
+            om = 1 / (2 * a) * (la**2 - lc**2 + a**2)
+            oh = math.sqrt(lb**2 - om**2 - (on - a)**2)
+            res = [on, om, oh]
+
+        elif (a**2 + la**2 - lb**2 < 0) and (a**2 + la**2 - lc**2 < 0) and \
+                (a**2 + lb**2 - la**2 > 0) and (a**2 + lc**2 - la**2 > 0):
+
+            print("case 7, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (lb**2 - la**2 - a**2)
+            om = 1 / (2 * a) * (lc**2 - la**2 - a**2)
+            oh = math.sqrt(la**2 - on**2 - om**2)
+            res = [-on, -om, oh]
+
+        elif (a**2 + la**2 - lc**2 < 0) and (a**2 + lc**2 - la**2 > 0) and \
+                (a**2 + la**2 - lb**2 > 0) and (a**2 + lb**2 - la**2 > 0):
+
+            print("case 8, la %f lb %f lc %f" % (la, lb, lc))
+            on = 1 / (2 * a) * (la**2 - lb**2 + a**2)
+            om = 1 / (2 * a) * (lc**2 - la**2 - a**2)
+            oh = math.sqrt(la**2 - on**2 - om**2)
+            res = [on, -om, oh]
+
+        elif (a**2 + lb**2 - la**2 < 0) and (a**2 + la**2 - lc**2 < 0) and \
+                (a**2 + la**2 - lb**2 > 0) and (a**2 + lc**2 - la**2 > 0):
+
+            print("case 9, la %f lb %f lc %f" % (la, lb, lc))
+            on = a + 1 / (2 * a) * (la**2 - lb**2 - a**2)
+            om = 1 / (2 * a) * (lc**2 - la**2 - a**2)
+            oh = math.sqrt(lb**2 - (on - a)**2 - om**2)
+            res = [on, -om, oh]
+        else:
+            print("No case matched")
+            res = [-1, -1, -1]
+    except:
+        print("failed to calc")
+        res = [-1, -1 , -1]
+
+
+    stop = time.time()
+    print("pyramid calc time {}".format(stop - start))
+
+    return res
+
 avg_rate = avg_rate()
 navigator = drone_navigator(cfg.LANDING_X, cfg.LANDING_Y)
 plot_sock = create_plot_sock()
@@ -575,7 +684,20 @@ while True:
         X0 = np.abs(np.array([x, y, z]))
         assigned = True
 
-    X_calc = calc_pos(X0, loc)
+    received_anch = []
+    for anch in loc["anchors"]:
+        received_anch.append(anch['dist']['addr'])
+
+    if (0x28b9 in received_anch) and \
+        (0x262d in received_anch) and \
+        (0x260f in received_anch):
+            X_calc_pyramid = calc_pos_pyramid(loc)
+    else:
+        print("did not receive 3 anchors")
+        continue
+
+    #X_calc = calc_pos(X0, loc)
+    X_calc = X_calc_pyramid
 
     X0 = X_calc
     X_lse.append(X_calc[0])
