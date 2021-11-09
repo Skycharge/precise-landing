@@ -31,7 +31,7 @@ UDP_PLOT_PORT = 5558
 LANDING_X = 0.60 / 2
 LANDING_Y = 0.60 / 2
 
-TESTING_STAND = 2
+TESTING_STAND = 1
 
 if TESTING_STAND == 1:
     # Anchors coords (should create a rectangle with clockwise coords)

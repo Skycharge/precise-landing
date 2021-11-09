@@ -65,21 +65,22 @@ class dwm_source(enum.Enum):
 DWM_DATA_SOURCE = dwm_source.BLE
 #DWM_DATA_SOURCE = dwm_source.SOCK
 
-class len_log:
-    def __init__(self, anch):
-        self.anch = anch
+class fitered_log:
+    def __init__(self, filter_type):
         self.data = []
         self.T = []
+        self.filter_type = filter_type
 
     def add_to_filter(self, l, ts):
         self.data.append(l)
         self.T.append(ts)
 
-        apply_filter = 2
-        if apply_filter == 1 and len(self.data) > moving_window:
+        if self.filter_type == 1 and len(self.data) > moving_window:
             self.data = list(uniform_filter1d(self.data, size=moving_window, mode="reflect"))
-        if apply_filter == 2:
+        if self.filter_type == 2:
             self.data = list(gaussian_filter1d(self.data, 6))
+        if self.filter_type == 3:
+            self.data = list(savgol_filter(self.data, moving_window, 5, mode="nearest"))
 
         #print(self.data)
         while (len(self.T) > 0) and (ts - self.T[0] > hist_len_sec):
@@ -97,7 +98,11 @@ class len_log:
 
 anch_len_log = {}
 for anch in cfg.ANCHORS.keys():
-    anch_len_log[anch] = len_log(anch)
+    anch_len_log[anch] = fitered_log(2)
+
+acc_x_log = fitered_log(3)
+acc_y_log = fitered_log(3)
+acc_z_log = fitered_log(3)
 #
 # Welford's online algorithm
 # https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
@@ -291,7 +296,7 @@ def create_plot_sock():
 
     return sock
 
-def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, loc):
+def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, loc, nano_data):
     x_pid = navigator.x_pid
     y_pid = navigator.y_pid
 
@@ -307,8 +312,17 @@ def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, l
         dists[i] = dist
         i += 1
 
-    # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats
-    buf = struct.pack("dfffffffffffffffffiiiHHHHffff",
+    if nano_data == None:
+        acc_x = 0
+        acc_y = 0
+        acc_z = 0
+    else:
+        acc_x = nano_data["acc"][0]
+        acc_y = nano_data["acc"][1]
+        acc_z = nano_data["acc"][2]
+
+    # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats, 3 floats
+    buf = struct.pack("dfffffffffffffffffiiiHHHHfffffff",
                       ts, x, y, z, parrot_alt, rate,
                       x_pid.Kp, x_pid.Ki, x_pid.Kd,
                       x_pid.components[0], x_pid.components[1], x_pid.components[2],
@@ -316,7 +330,8 @@ def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, l
                       y_pid.components[0], y_pid.components[1], y_pid.components[2],
                       navigator.roll, navigator.pitch, nr_anchors,
                       addrs[0], addrs[1], addrs[2], addrs[3],
-                      dists[0], dists[1], dists[2], dists[3])
+                      dists[0], dists[1], dists[2], dists[3],
+                      acc_x, acc_y, acc_z)
     sock.sendto(buf, (cfg.UDP_PLOT_IP, cfg.UDP_PLOT_PORT))
 
 
@@ -564,6 +579,23 @@ def filter_dist(loc):
         anch["dist"]["dist"] = anch_len_log[addr].get_last_filtered()
         print("dist after filtering %.4f" % anch["dist"]["dist"])
 
+def filter_acc(nano_data):
+    acc_x = nano_data["acc"][0]
+    acc_y = nano_data["acc"][1]
+    acc_z = nano_data["acc"][2]
+    ts = nano_data["ts"]
+
+    acc_x_log.add_to_filter(acc_x, ts)
+    acc_y_log.add_to_filter(acc_y, ts)
+    acc_z_log.add_to_filter(acc_z, ts)
+
+
+    # print("dist before filtering %.4f" % dist)
+    nano_data["acc"][0] = acc_x_log.get_last_filtered()
+    nano_data["acc"][1] = acc_y_log.get_last_filtered()
+    nano_data["acc"][2] = acc_z_log.get_last_filtered()
+    # print("dist after filtering %.4f" % anch["dist"]["dist"])
+
 while True:
     print(">> get location from anchors")
 
@@ -581,6 +613,10 @@ while True:
 
     print(">> get distances")
     filter_dist(loc)
+
+    if nano_data != None:
+        # it is not clear if we should filter acc values, and if so then with which filter.
+        filter_acc(nano_data)
 
     if not assigned:
         X0 = np.abs(np.array([x, y, z]))
@@ -603,7 +639,7 @@ while True:
             continue
 
         X_calc = X_kalman
-        apply_filter = 0
+        apply_filter = 2
     else:
         X_calc = calc_pos(X0, loc)
         apply_filter = 2
@@ -673,4 +709,4 @@ while True:
     ts = time.time()
 
     send_plot_data(plot_sock, xf, yf, zf, parrot_alt, ts, rate,
-                   len(loc['anchors']), navigator, loc)
+                   len(loc['anchors']), navigator, loc, nano_data)

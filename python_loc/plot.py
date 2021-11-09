@@ -235,6 +235,99 @@ class dynamic_plot():
         self.figure.canvas.draw()
         self.figure.canvas.flush_events()
 
+class dynamic_acc_plot():
+    min_x = 0
+    max_x = 10
+
+    min_y = -2
+    max_y = 2
+
+    # For cleaning
+    previous_text = None
+
+    def __init__(self, plot_title, x_label, y_label,
+                 lines1_label, lines2_label, lines3_label):
+        # Turn on plot interactive mode
+        plt.ion()
+
+        # Set up plot
+        self.figure, self.ax = plt.subplots()
+
+        # Autoscale on unknown axis and known lims on the other
+        self.ax.set_autoscaley_on(True)
+        self.ax.set(xlim=(self.min_x, self.max_x),
+                    ylim=(self.min_y, self.max_y),
+                    xlabel=x_label,
+                    ylabel=y_label,
+                    title=plot_title)
+
+        # Enable grid
+        self.ax.grid()
+
+        # Create curves on the plot
+        self.lines1, = self.ax.plot([], [], '-', label=lines1_label)
+        self.lines2, = self.ax.plot([], [], '-', label=lines2_label)
+        self.lines3, = self.ax.plot([], [], '-', label=lines3_label)
+
+        # Set other members
+        self.xdata  = []
+        self.acc_x_list = []
+        self.acc_y_list = []
+        self.acc_z_list = []
+
+
+    def _remove_outdated_data(self):
+        width = (self.max_x - self.min_x) * 2
+        first = self.xdata[0]
+        last = self.xdata[-1]
+
+        while first < last - width:
+            self.xdata.pop(0)
+            first = self.xdata[0]
+
+            self.acc_x_list.pop(0)
+            self.acc_y_list.pop(0)
+            self.acc_z_list.pop(0)
+
+    def update(self, xdata, acc, text):
+        self.xdata.append(xdata)
+        self.acc_x_list.append(acc[0])
+        self.acc_y_list.append(acc[1])
+        self.acc_z_list.append(acc[2])
+
+        # Clean points which are not visible on the plot
+        self._remove_outdated_data()
+
+        # Following window
+        if xdata >= self.max_x:
+            diff = self.max_x - self.min_x
+            self.max_x = xdata
+            self.min_x = xdata - diff
+            self.ax.set_xlim(self.min_x, self.max_x)
+
+        # Update data (with the new _and_ the old points)
+        self.lines1.set_xdata(self.xdata)
+        self.lines1.set_ydata(self.acc_x_list)
+
+        self.lines2.set_xdata(self.xdata)
+        self.lines2.set_ydata(self.acc_y_list)
+
+        self.lines3.set_xdata(self.xdata)
+        self.lines3.set_ydata(self.acc_z_list)
+
+        # Set text
+        if self.previous_text:
+            Artist.remove(self.previous_text)
+        self.previous_text = self.ax.text(0.0, 1.025, text, transform=self.ax.transAxes, \
+                                          bbox=dict(facecolor='green', alpha=0.3))
+
+        # Need both of these in order to rescale
+        self.ax.autoscale_view()
+        self.ax.legend()
+
+        # We need to draw *and* flush
+        self.figure.canvas.draw()
+        self.figure.canvas.flush_events()
 
 first_ts = 0
 def draw_scene(ax, X, Y, Z, parrot_alt, ts, anch_cnt):
@@ -281,8 +374,8 @@ def recv_math_output(sock):
     # Wait for data
     select.select([sock], [], [], None)
 
-    # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats
-    fmt = "dfffffffffffffffffiiiHHHHffff"
+    # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats, 3 floats
+    fmt = "dfffffffffffffffffiiiHHHHfffffff"
     sz = struct.calcsize(fmt)
 
     # Suck everything, drop all packets except the last one
@@ -319,6 +412,10 @@ if __name__ == '__main__':
     len_plot = dynamic_dist_plot("Anchors dist", "Time (s)", "Drone distance (m)",
                                  cfg.ANCHORS.keys())
 
+    acc_plot = dynamic_acc_plot("linear acc", "Time (s)", "m/(s^2)",
+                                "acc_x", "acc_y", "acc_z")
+
+
     # Create 3D plot
     if DRAW_3D_SCENE:
         fig3d = plt.figure()
@@ -339,6 +436,7 @@ if __name__ == '__main__':
         (ts, x, y, z, parrot_alt, rate, xKp, xKi, xKd, xp, xi, xd,
          yKp, yKi, yKd, yp, yi, yd, roll, pitch, nr_anchors,
          addr1, addr2, addr3, addr4, dist1, dist2, dist3, dist4,
+         acc_x, acc_y, acc_z,
          dropped) = recv_math_output(sock)
 
         X.append(x)
@@ -377,6 +475,7 @@ if __name__ == '__main__':
                      "   %.2f    %.2f    %.2f\n" \
                      "y %5.2f  pitch %d" % \
                      (yKp, yKi, yKd, rate, dropped, yp, yi, yd, y, pitch)
+        acc_text = "acc_x=%.2f acc_y=%.2f acc_z=%.2f" % (acc_x, acc_y, acc_z)
 
         # Timestamp from 0
         if start_ts == 0.0:
@@ -389,6 +488,8 @@ if __name__ == '__main__':
 
         len_plot.update(ts, [addr1, addr2, addr3, addr4],
                         [dist1, dist2, dist3, dist4])
+
+        acc_plot.update(ts, [acc_x, acc_y, acc_z], acc_text)
 
         # Draw 3d scene
         if DRAW_3D_SCENE:
