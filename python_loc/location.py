@@ -35,6 +35,7 @@ dwm_fd      = None
 nano33_fd   = None
 parrot_sock = None
 plot_sock   = None
+nano_plot_sock = None
 
 dwm_loc     = None
 parrot_data = None
@@ -316,13 +317,19 @@ def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, l
         acc_x = 0
         acc_y = 0
         acc_z = 0
+        yaw = 0
+        pitch = 0
+        roll = 0
     else:
         acc_x = nano_data["acc"][0]
         acc_y = nano_data["acc"][1]
         acc_z = nano_data["acc"][2]
+        yaw = nano_data["attitude"][0]
+        pitch = nano_data["attitude"][1]
+        roll = nano_data["attitude"][2]
 
     # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats, 3 floats
-    buf = struct.pack("dfffffffffffffffffiiiHHHHfffffff",
+    buf = struct.pack("dfffffffffffffffffiiiHHHHffffffffff",
                       ts, x, y, z, parrot_alt, rate,
                       x_pid.Kp, x_pid.Ki, x_pid.Kd,
                       x_pid.components[0], x_pid.components[1], x_pid.components[2],
@@ -331,7 +338,7 @@ def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, nr_anchors, navigator, l
                       navigator.roll, navigator.pitch, nr_anchors,
                       addrs[0], addrs[1], addrs[2], addrs[3],
                       dists[0], dists[1], dists[2], dists[3],
-                      acc_x, acc_y, acc_z)
+                      acc_x, acc_y, acc_z, yaw, pitch, roll)
     sock.sendto(buf, (cfg.UDP_PLOT_IP, cfg.UDP_PLOT_PORT))
 
 
@@ -438,6 +445,27 @@ def receive_parrot_data_from_sock(sock):
 def is_dwm_location_reliable(loc):
     return len(loc['anchors']) >= 3
 
+def send_nano_to_plot(sock, nano_data):
+    if nano_data == None:
+        acc_x = 0
+        acc_y = 0
+        acc_z = 0
+        yaw = 0
+        pitch = 0
+        roll = 0
+    else:
+        acc_x = nano_data["acc"][0]
+        acc_y = nano_data["acc"][1]
+        acc_z = nano_data["acc"][2]
+        yaw = nano_data["attitude"][0]
+        pitch = nano_data["attitude"][1]
+        roll = nano_data["attitude"][2]
+
+    # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats, 3 floats
+    buf = struct.pack("ffffff",
+                      acc_x, acc_y, acc_z, yaw, pitch, roll)
+    sock.sendto(buf, (cfg.UDP_PLOT_IP, cfg.UDP_NANO_PLOT_PORT))
+
 def get_dwm_location_or_parrot_data():
     global dwm_fd, nano33_fd, parrot_sock, dwm_loc, parrot_data, nano_data
 
@@ -489,6 +517,8 @@ def get_dwm_location_or_parrot_data():
             nano_data["acc"] = acc # ax, ay, az, ts
             nano_data["attitude"] = attitude
             nano_data["ts"] = time.time()
+            send_nano_to_plot(nano_plot_sock, nano_data)
+
 
     return dwm_loc, parrot_data, nano_data
 
@@ -558,6 +588,7 @@ def calc_pos(X0, loc):
 avg_rate = avg_rate()
 navigator = drone_navigator(cfg.LANDING_X, cfg.LANDING_Y)
 plot_sock = create_plot_sock()
+nano_plot_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 navigator.start()
 
@@ -639,7 +670,7 @@ while True:
             continue
 
         X_calc = X_kalman
-        apply_filter = 2
+        apply_filter = 0
     else:
         X_calc = calc_pos(X0, loc)
         apply_filter = 2

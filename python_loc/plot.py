@@ -375,7 +375,7 @@ def recv_math_output(sock):
     select.select([sock], [], [], None)
 
     # 1 double, 17 floats, 3 int32, 4 unsigned shorts, 4 floats, 3 floats
-    fmt = "dfffffffffffffffffiiiHHHHfffffff"
+    fmt = "dfffffffffffffffffiiiHHHHffffffffff"
     sz = struct.calcsize(fmt)
 
     # Suck everything, drop all packets except the last one
