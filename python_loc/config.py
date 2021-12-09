@@ -8,8 +8,8 @@ class kalman_type(enum.Enum):
     EKF9 = 1,
 
 # Do we use kalman
-#USE_KALMAN = kalman_type.EKF6
-USE_KALMAN = None
+USE_KALMAN = kalman_type.EKF9
+# USE_KALMAN = None
 
 # Distances from DWM1001-server
 MCAST_GRP = '224.1.1.1'
@@ -26,8 +26,6 @@ UDP_COMMANDS_PORT = 5557
 # Calculated math output to plot
 UDP_PLOT_IP = '127.0.0.1'
 UDP_PLOT_PORT = 5558
-
-UDP_NANO_PLOT_PORT = 5559
 
 # Landing point in meters, middle of the landing platform
 LANDING_X = 0.60 / 2

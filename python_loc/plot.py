@@ -436,7 +436,7 @@ if __name__ == '__main__':
         (ts, x, y, z, parrot_alt, rate, xKp, xKi, xKd, xp, xi, xd,
          yKp, yKi, yKd, yp, yi, yd, roll, pitch, nr_anchors,
          addr1, addr2, addr3, addr4, dist1, dist2, dist3, dist4,
-         acc_x, acc_y, acc_z,
+         acc_x, acc_y, acc_z,  yaw, pitch, roll,
          dropped) = recv_math_output(sock)
 
         X.append(x)

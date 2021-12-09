@@ -507,7 +507,9 @@ def get_dwm_location_or_parrot_data():
             parrot_data = receive_parrot_data_from_sock(parrot_sock)
         if nano33_fd in rd:
             acc, attitude = receive_nano33_data()
-
+            acc[0] *=9.8
+            acc[1] *=9.8
+            acc[2] *=9.8
             print("acc = {x=%.3f y=%.3f z=%.3f}, attitude = {yaw=%.3f pitch=%.3f roll=%.3f} ts=%d" % \
                   (acc[0], acc[1], acc[2],
                    attitude[0], attitude[1], attitude[2],
@@ -517,7 +519,7 @@ def get_dwm_location_or_parrot_data():
             nano_data["acc"] = acc # ax, ay, az, ts
             nano_data["attitude"] = attitude
             nano_data["ts"] = time.time()
-            send_nano_to_plot(nano_plot_sock, nano_data)
+            #send_nano_to_plot(nano_plot_sock, nano_data)
 
 
     return dwm_loc, parrot_data, nano_data
@@ -577,7 +579,7 @@ def calc_pos(X0, loc):
 
     # res = minimize(func1, X0, method="SLSQP", bounds=[(-math.inf, math.inf), (-math.inf, math.inf), (0, math.inf)],
     #           options={ 'ftol': 1e-5, 'disp': True}, args=loc)
-    #           #options={'ftol': 1e-5,'eps' : 1e-8, 'disp': False}, args=loc)
+    #           #options={'ftol': 1e-5,'eps' : 1e-8, 'disp': False}, args=[loc])
 
     # experiments
     #res = minimize(func1, X0, method='BFGS', options={'xatol': 1e-8, 'disp': True}, args=(la, lb, lc, ld))
@@ -588,7 +590,6 @@ def calc_pos(X0, loc):
 avg_rate = avg_rate()
 navigator = drone_navigator(cfg.LANDING_X, cfg.LANDING_Y)
 plot_sock = create_plot_sock()
-nano_plot_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 navigator.start()
 
@@ -670,7 +671,7 @@ while True:
             continue
 
         X_calc = X_kalman
-        apply_filter = 0
+        apply_filter = 2
     else:
         X_calc = calc_pos(X0, loc)
         apply_filter = 2
@@ -716,6 +717,17 @@ while True:
     xf = X_filtered[-1]
     yf = Y_filtered[-1]
     zf = Z_filtered[-1]
+
+    if cfg.USE_KALMAN:
+        if cfg.USE_KALMAN == cfg.kalman_type.EKF6:
+            ekf6.x[0][0] = xf
+            ekf6.x[2][0] = yf
+            ekf6.x[4][0] = zf
+        elif cfg.USE_KALMAN == cfg.kalman_type.EKF9:
+            ekf9.x[0][0] = xf
+            ekf9.x[3][0] = yf
+            ekf9.x[6][0] = zf
+
 
     f_pos = func1(np.array([x, y, z]), loc)
     c_pos = func1([xf, yf, zf], loc)

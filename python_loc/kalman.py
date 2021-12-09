@@ -30,7 +30,7 @@ def generate_F_6(T):
     return F
 
 def generate_F_9(T):
-    f = [[1, T , -T*T/2.0],
+    f = [[1, T, -T*T/2.0],
          [0, 1, -T],
          [0, 0, 1]]
     F = block_diag(f, f, f)
@@ -41,9 +41,10 @@ def generate_Q_6(T):
     #Q = Q_discrete_white_noise(dim=2, dt=T, var=sigma_a**2, block_size=3)
     q = [[T**4 / 3, T**3 / 2],
          [T**3 / 2, T**2]]
-    qz = q * m_z_damping_factor
+    qz = np.array(q) * m_z_damping_factor
     Q = block_diag(q, q, qz)
     Q *= sigma_a**2
+    Q *= m_Q_scale
 
     return Q
 
@@ -55,10 +56,10 @@ def generate_Q_9(T):
     q = [[T**3/3.0*tao_acc+T**5/20.0*tao_bias,  T**2/2*tao_acc+T**4/8.0*tao_bias,  -T**3/6*tao_bias],
          [T**2/2.0*tao_acc+T**4/8.0*tao_bias ,  T*tao_acc+T**3/3*tao_bias,  -T**2/2*tao_bias],
          [-T**3/6.0*tao_bias,  -T**2/2*tao_bias,  T*tao_bias]]
-    qz = q * m_z_damping_factor
+    qz = np.array(q) * m_z_damping_factor
     Q = block_diag(q, q, qz)
     Q *= sigma_a**2
-    Q *= m_Q_scale;
+    Q *= m_Q_scale
 
     return Q
 
@@ -66,7 +67,7 @@ def generate_B_9(T):
     b = [[T*T/2.0,  0,  0],
          [T,  0,  0],
          [0,  0,  0]]
-    B = block_diag(b, b,  np.array(b))
+    B = block_diag(b, b, b)
 
     return B
 
