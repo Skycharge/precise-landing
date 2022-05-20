@@ -3,7 +3,7 @@
 """Drone localization
 
 Usage:
-  droneloc.py --trajectory <file> [--fuse-velocity] [--fuse-altitude] [--post-smoother <smoother>] [--noise-std <sigma>] [--seed <seed>]
+  droneloc.py --trajectory <file> [--fuse-velocity] [--fuse-altitude] [--post-smoother <smoother>] [--noise-std <sigma>] [--seed <seed>] [--kf-type <type>]
 
 Options:
   -h --help                  Show this screen.
@@ -15,24 +15,25 @@ Options:
                              e.g. standard deviation of real a DWM1001 device can vary
                              from 20mm to 200mm.
   --seed <seed>              Seed value for the random generator. 0 is the default value.
+  --kf-type <type>           Kalman filter type. can be: "ekf" for Extended Kalman filter, "ukf" for Unscented Kalman
+                             filter.
 
 """
+import sys
 
 from docopt import docopt
-from math import cos, sin, sqrt, atan2
 import matplotlib.pyplot as plt
 import numpy as np
-from numpy import array, dot
+
 from numpy.linalg import pinv
 from numpy.random import randn
-import random
-from filterpy.stats import plot_covariance_ellipse
+from filterpy.stats import plot_covariance
 from scipy.linalg import block_diag
 from scipy.ndimage import uniform_filter1d
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter
 import filterpy.kalman
-import time
+
 import enum
 
 class smoother_type(enum.Enum):
@@ -40,13 +41,17 @@ class smoother_type(enum.Enum):
     UNIFORM  = 1
     GAUSSIAN = 2
 
+class kalman_type(enum.Enum):
+    EKF6   = 0
+    UKF6   = 1
+
 sigma_process = 0.225
 sigma_dist = 0.2
 sigma_vel = 0.05
 sigma_alt = 0.02
 
-R_scale = 1
-Q_scale = 1
+R_scale = 0.5
+Q_scale = 2
 z_damping_factor = 1
 
 dt = 0.2
@@ -118,8 +123,40 @@ def Hx_6_dist(x, loc):
         r = np.linalg.norm(pos - anch) + 1e-6
         r_pred.append(r)
 
-    return np.array(r_pred).T
+    return np.array(r_pred)
 
+
+def HJacobian_6_dist(x, loc):
+    H = np.empty([0, 6])
+    for anchor in loc['anchors']:
+        coords = anchor["pos"]["coords"]
+        anch_x = coords[0]
+        anch_y = coords[1]
+        anch_z = coords[2]
+
+        anch = np.array([anch_x, 0, anch_y, 0, anch_z, 0])
+        pos = np.array([x[0], 0, x[2], 0, x[4], 0])
+        r = np.linalg.norm(pos - anch) + 1e-6
+        h_row = (pos - anch) / r
+        H = np.append(H, [h_row], axis=0)
+
+    return H
+
+
+def HJacobian_6_vel(x, loc):
+    # X_6 = [Px, Vx, Py, Vy, Pz, Vz]
+    return np.array([[0, 1, 0, 0, 0, 0],
+                     [0, 0, 0, 1, 0, 0],
+                     [0, 0, 0, 0, 0, 1]])
+
+
+def HJacobian_6_alt(x, loc):
+    """ takes a state X and returns the measurement that would
+    correspond to that state.
+    """
+    # X_6 = [Px, Vx, Py, Vy, Pz, Vz]
+    # Altitude, or Z coordinate
+    return np.array([0, 0, 0, 0, 1, 0]).reshape(1, 6)
 
 def Hx_6_alt(x):
     """ takes a state X and returns the measurement that would
@@ -127,7 +164,7 @@ def Hx_6_alt(x):
     """
 
     # Altitude, or Z coordinate
-    return np.array([x[4]]).T
+    return np.array([x[4]])
 
 
 def Hx_6_vel(x):
@@ -136,7 +173,7 @@ def Hx_6_vel(x):
     """
 
     # X_6 = [Px, Vx, Py, Vy, Pz, Vz]
-    return np.array([x[1], x[3], x[5]]).T
+    return np.array([x[1], x[3], x[5]])
 
 
 def get_measurements_dist(loc):
@@ -145,15 +182,15 @@ def get_measurements_dist(loc):
         dist = anchor["dist"]["dist"]
         ranges.append(dist)
 
-    return np.array(ranges).T
+    return np.array(ranges)
 
 
 def get_measurements_alt(alt):
-    return np.array([alt['alt']]).T
+    return np.array([alt['alt']])
 
 
 def get_measurements_vel(vel):
-    return np.array(vel['vel']).T
+    return np.array(vel["vel"])
 
 
 class drone_localization():
@@ -162,11 +199,18 @@ class drone_localization():
     process_ts = None
     post_smoother = None
     x_hist = []
+    kf_type = None
 
-    def __init__(self, dt=None, post_smoother=None):
-        points = filterpy.kalman.MerweScaledSigmaPoints(n=6, alpha=.1, beta=2, kappa=0)
-        kf = filterpy.kalman.UnscentedKalmanFilter(dim_x=6, dim_z=4, fx=F_6, hx=Hx_6_dist,
-                                                   dt=dt, points=points)
+    def __init__(self, kf_type, dt=None, post_smoother=None):
+        if kf_type == kalman_type.UKF6:
+            points = filterpy.kalman.MerweScaledSigmaPoints(n=6, alpha=.1, beta=2, kappa=0)
+            kf = filterpy.kalman.UnscentedKalmanFilter(dim_x=6, dim_z=4, fx=F_6, hx=Hx_6_dist,
+                                                       dt=dt, points=points)
+        elif kf_type == kalman_type.EKF6:
+            kf = filterpy.kalman.ExtendedKalmanFilter(dim_x=6, dim_z=4)
+        else:
+            raise ValueError("incorrect kalman filter type %d." % kf_type)
+
         kf.x = np.array([1, 0, 1, 0, 1, 0])
 
         # set cov of vel
@@ -175,6 +219,7 @@ class drone_localization():
         kf.P[5][5] = 0.1
 
         self.kf = kf
+        self.kf_type = kf_type
         self.dt = dt
         self.post_smoother = post_smoother
 
@@ -225,10 +270,15 @@ class drone_localization():
         dt = self.get_dt(loc)
 
         self.kf.Q = Q_6(dt)
-        self.kf.predict(dt=dt)
+        self.kf.predict()
 
         z = get_measurements_dist(loc)
-        self.kf.update(z, R=R, hx=Hx_6_dist, loc=loc)
+        if self.kf_type == kalman_type.UKF6:
+            self.kf.update(z, R=R, hx=Hx_6_dist, loc=loc)
+        elif self.kf_type == kalman_type.EKF6:
+            self.kf.update(z, R=R, HJacobian=HJacobian_6_dist, Hx=Hx_6_dist, args=loc, hx_args=loc)
+        else:
+            raise ValueError("incorrect kalman filter type %d." % self.kf_type)
 
         if np.any(np.abs(self.kf.y) > 2):
             print("innovation DIST is too large: ", self.kf.y)
@@ -243,14 +293,19 @@ class drone_localization():
         old_x = self.kf.x
         old_P = self.kf.P
 
-        R = np.eye(1) * (sigma_alt**2)
+        R = np.eye(1) * (sigma_alt**2 * R_scale)
         dt = self.get_dt(alt)
 
         self.kf.Q = Q_6(dt)
-        self.kf.predict(dt=dt)
+        self.kf.predict()
 
         z = get_measurements_alt(alt)
-        self.kf.update(z, R=R, hx=Hx_6_alt)
+        if self.kf_type == kalman_type.UKF6:
+            self.kf.update(z, R=R, hx=Hx_6_alt)
+        elif self.kf_type == kalman_type.EKF6:
+            self.kf.update(z, R=R, HJacobian=HJacobian_6_alt, Hx=Hx_6_alt, args=loc)
+        else:
+            raise ValueError("incorrect kalman filter type %d." % self.kf_type)
 
         if np.any(np.abs(self.kf.y) > 2):
             print("innovation ALT is too large: ", self.kf.y)
@@ -267,14 +322,19 @@ class drone_localization():
         old_x = self.kf.x
         old_P = self.kf.P
 
-        R = np.eye(3) * (sigma_vel**2)
+        R = np.eye(3) * (sigma_vel**2 * R_scale)
         dt = self.get_dt(vel)
 
         self.kf.Q = Q_6(dt)
-        self.kf.predict(dt=dt)
+        self.kf.predict()
 
         z = get_measurements_vel(vel)
-        self.kf.update(z, R=R, hx=Hx_6_vel)
+        if self.kf_type == kalman_type.UKF6:
+            self.kf.update(z, R=R, hx=Hx_6_vel)
+        elif self.kf_type == kalman_type.EKF6:
+            self.kf.update(z, R=R, HJacobian=HJacobian_6_vel, Hx=Hx_6_vel, args=loc)
+        else:
+            raise ValueError("incorrect kalman filter type %d." % self.kf_type)
 
         if np.any(np.abs(self.kf.y) > 2):
             print("innovation VEL is too large: ", self.kf.y)
@@ -319,7 +379,15 @@ if __name__ == '__main__':
     if args['--noise-std']:
         noise_std = float(args['--noise-std'])
 
-    droneloc = drone_localization(dt, post_smoother=post_smoother)
+    if args['--kf-type'] == 'ukf':
+        kf_type = kalman_type.UKF6
+    elif args['--kf-type'] == 'ekf':
+        kf_type = kalman_type.EKF6
+    else:
+        print("kalman filter type is not specified. set UKF as default.")
+        kf_type = kalman_type.UKF6
+
+    droneloc = drone_localization(kf_type, dt, post_smoother=post_smoother)
 
     # Plot anchors
     anchors_coords = get_anchors_coords(anchors)
@@ -396,11 +464,11 @@ if __name__ == '__main__':
         # Plot filtered position
         plt.plot(coords[0], coords[1], ',', color='r')
 
-        if n % 100 == 0:
+        if n % 50 == 0:
             # Extract X (Px, Py) and P (Px, Py)
-            plot_covariance_ellipse((coords[0], coords[1]),
-                                    droneloc.kf.P[0:3:2, 0:3:2],
-                                    std=10, facecolor='g', alpha=0.3)
+            plot_covariance((coords[0], coords[1]),
+                            droneloc.kf.P[0:3:2, 0:3:2],
+                            std=10, facecolor='g', alpha=0.3)
         n += 1
 
 
