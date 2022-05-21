@@ -50,8 +50,10 @@ sigma_dist = 0.2
 sigma_vel = 0.05
 sigma_alt = 0.02
 
-R_scale = 0.5
-Q_scale = 2
+#R_scale = 0.5
+#Q_scale = 2
+R_scale = 1
+Q_scale = 1
 z_damping_factor = 1
 
 dt = 0.2
@@ -83,7 +85,7 @@ anchors = [
 #       A - acceleration
 #
 
-def F_6(x, dt):
+def ukf_F_6(x, dt):
     F = np.array([[1, dt,  0,  0,  0, 0],
                   [0,  1,  0,  0,  0, 0],
                   [0,  0,  1, dt,  0, 0],
@@ -92,6 +94,17 @@ def F_6(x, dt):
                   [0,  0,  0,  0,  0, 1]
                   ])
     return F @ x
+
+
+def ekf_F_6(dt):
+    F = np.array([[1, dt,  0,  0,  0, 0],
+                  [0,  1,  0,  0,  0, 0],
+                  [0,  0,  1, dt,  0, 0],
+                  [0,  0,  0,  1,  0, 0],
+                  [0,  0,  0,  0,  1, dt],
+                  [0,  0,  0,  0,  0, 1]
+                  ])
+    return F
 
 
 def Q_6(dt):
@@ -151,12 +164,10 @@ def HJacobian_6_vel(x, loc):
 
 
 def HJacobian_6_alt(x, loc):
-    """ takes a state X and returns the measurement that would
-    correspond to that state.
-    """
     # X_6 = [Px, Vx, Py, Vy, Pz, Vz]
     # Altitude, or Z coordinate
     return np.array([0, 0, 0, 0, 1, 0]).reshape(1, 6)
+
 
 def Hx_6_alt(x):
     """ takes a state X and returns the measurement that would
@@ -204,7 +215,7 @@ class drone_localization():
     def __init__(self, kf_type, dt=None, post_smoother=None):
         if kf_type == kalman_type.UKF6:
             points = filterpy.kalman.MerweScaledSigmaPoints(n=6, alpha=.1, beta=2, kappa=0)
-            kf = filterpy.kalman.UnscentedKalmanFilter(dim_x=6, dim_z=4, fx=F_6, hx=Hx_6_dist,
+            kf = filterpy.kalman.UnscentedKalmanFilter(dim_x=6, dim_z=4, fx=ukf_F_6, hx=Hx_6_dist,
                                                        dt=dt, points=points)
         elif kf_type == kalman_type.EKF6:
             kf = filterpy.kalman.ExtendedKalmanFilter(dim_x=6, dim_z=4)
@@ -268,14 +279,16 @@ class drone_localization():
 
         R = np.eye(len(loc["anchors"])) * (sigma_dist**2 * R_scale)
         dt = self.get_dt(loc)
-
-        self.kf.Q = Q_6(dt)
-        self.kf.predict()
-
         z = get_measurements_dist(loc)
+
         if self.kf_type == kalman_type.UKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.predict(dt=dt)
             self.kf.update(z, R=R, hx=Hx_6_dist, loc=loc)
         elif self.kf_type == kalman_type.EKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.F = ekf_F_6(dt)
+            self.kf.predict()
             self.kf.update(z, R=R, HJacobian=HJacobian_6_dist, Hx=Hx_6_dist, args=loc, hx_args=loc)
         else:
             raise ValueError("incorrect kalman filter type %d." % self.kf_type)
@@ -295,14 +308,16 @@ class drone_localization():
 
         R = np.eye(1) * (sigma_alt**2 * R_scale)
         dt = self.get_dt(alt)
-
-        self.kf.Q = Q_6(dt)
-        self.kf.predict()
-
         z = get_measurements_alt(alt)
+
         if self.kf_type == kalman_type.UKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.predict(dt=dt)
             self.kf.update(z, R=R, hx=Hx_6_alt)
         elif self.kf_type == kalman_type.EKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.F = ekf_F_6(dt)
+            self.kf.predict()
             self.kf.update(z, R=R, HJacobian=HJacobian_6_alt, Hx=Hx_6_alt, args=loc)
         else:
             raise ValueError("incorrect kalman filter type %d." % self.kf_type)
@@ -324,14 +339,16 @@ class drone_localization():
 
         R = np.eye(3) * (sigma_vel**2 * R_scale)
         dt = self.get_dt(vel)
-
-        self.kf.Q = Q_6(dt)
-        self.kf.predict()
-
         z = get_measurements_vel(vel)
+
         if self.kf_type == kalman_type.UKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.predict(dt=dt)
             self.kf.update(z, R=R, hx=Hx_6_vel)
         elif self.kf_type == kalman_type.EKF6:
+            self.kf.Q = Q_6(dt)
+            self.kf.F = ekf_F_6(dt)
+            self.kf.predict()
             self.kf.update(z, R=R, HJacobian=HJacobian_6_vel, Hx=Hx_6_vel, args=loc)
         else:
             raise ValueError("incorrect kalman filter type %d." % self.kf_type)
