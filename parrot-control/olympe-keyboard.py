@@ -403,7 +403,7 @@ if __name__ == "__main__":
                     if is_drone_cmd_land(cmd):
                         # Block other input after landing
                         kb_ctrl.block_other_input()
-            elif other_input_blocked:
+            if other_input_blocked:
                 # We send STOP cmd only if no other input
                 drone(PCMD(0, 0, 0, 0, 0, timestampAndSeqNum=0))
 
