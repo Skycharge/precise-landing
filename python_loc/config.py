@@ -38,7 +38,7 @@ if TESTING_STAND == 1:
     }
 
     # Tag
-    TAG_ADDR = None # XXX ???????
+    TAG_ADDRS = [None] # XXX ???????
 
     # Nano33Ble
     NANO33_MAC = "ed:26:b0:24:73:0c"
@@ -65,12 +65,7 @@ elif TESTING_STAND == 2:
     #
     # Tags
     #
-
-    # First
-    TAG_ADDR = 0x16e9
-
-    # Second
-    #TAG_ADDR = 0x16fc
+    TAG_ADDRS = [0x16e9] #, 0x16fc
 
     #
     # Nano33BLE
