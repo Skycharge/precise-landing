@@ -73,9 +73,9 @@ def send_dwm_data(dwm_sock, loc):
     ts_s = int(ts_s)
     ts_us = int(ts_us)
 
-    # (x, y, z, pos_qf, pos_valid, ts_sec, ts_usec, nr_anchors)
+    # (x, y, z, addr, pos_qf, pos_valid, ts_sec, ts_usec, nr_anchors)
     struct.pack_into(fmt, buff, 0,
-                     *pos['coords'], pos['qf'], pos['valid'],
+                     *pos['coords'], loc['addr'], pos['qf'], pos['valid'],
                      ts_s, ts_us, nr_anchors)
     off = struct.calcsize(fmt)
 

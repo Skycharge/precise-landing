@@ -293,6 +293,7 @@ class DWMDevice(gatt.Device):
         off = sz
 
         loc = {
+            'addr': self.node_addr,
             'pos': {
                 'coords': [0.0, 0.0, 0.0],
                 'qf': 0,
@@ -349,6 +350,10 @@ def blend_locations(locs):
             continue
 
         loc['anchors'] += l['anchors']
+
+    #XXX
+    if len(loc['anchors']) > 4:
+        print("ANCHORS: ", len(loc['anchors']))
 
     return loc
 
@@ -434,9 +439,10 @@ if __name__ == '__main__':
 
         if args['--stream-to-sock']:
             loc = blend_locations(locs.values())
-            # We pass through sock integers, not floats
-            coords_and_dist_to_mm(loc)
-            send_dwm_data(dwm_sock, loc)
+            if loc is not None:
+                # We pass through sock integers, not floats
+                coords_and_dist_to_mm(loc)
+                send_dwm_data(dwm_sock, loc)
 
 
 

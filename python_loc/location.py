@@ -89,7 +89,8 @@ class parrot_event_type(enum.Enum):
 pid_components = namedtuple('pid_components', 'Kp Ki Kd')
 
 # Default PID config
-xy_pid_comp  = pid_components(Kp=50,  Ki=0, Kd=100)
+#XXX for 2 tags
+xy_pid_comp  = pid_components(Kp=30,  Ki=0, Kd=50)
 yaw_pid_comp = pid_components(Kp=120, Ki=0, Kd=40)
 pid_limits   = (-100, 100)
 
@@ -361,14 +362,15 @@ def send_plot_data(sock, x, y, z, parrot_alt, ts, rate, navigator, loc):
 
 def receive_dwm_location_from_sock(sock):
     # Location header
-    fmt = "iiihhiii"
+    fmt = "iiihhhiii"
     sz = struct.calcsize(fmt)
     buf = sock.recv(sz, socket.MSG_PEEK)
 
     # Unpack location header
-    (x, y, z, pos_qf, pos_valid, ts_sec, ts_usec, nr_anchors) = struct.unpack(fmt, buf)
+    (x, y, z, addr, pos_qf, pos_valid, ts_sec, ts_usec, nr_anchors) = struct.unpack(fmt, buf)
 
     location = {
+        'addr': addr,
         'pos': {
             'coords': [float(x) / 1000,
                        float(y) / 1000,
@@ -416,7 +418,7 @@ def receive_dwm_location(dwm_fd):
     if DWM_DATA_SOURCE == dwm_source.SOCK:
         return receive_dwm_location_from_sock(dwm_fd)
 
-    loc = {}
+    loc = None
     tag = dwm_manager.find_device_by_efd(dwm_fd)
     if tag:
         loc = tag.get_location()
@@ -534,8 +536,8 @@ def print_location(loc):
     coords = loc['pos']['coords']
     # To mm, because we have all the logs in mm, not in m, argh
     coords = [int(v * 1000) for v in coords]
-    print("ts:%.6f [%d,%d,%d,%u] " % \
-          (loc['ts'], coords[0], coords[1], coords[2], loc['pos']['qf']),
+    print("[0x%04x] ts:%.6f [%d,%d,%d,%u] " % \
+          (loc['addr'], loc['ts'], coords[0], coords[1], coords[2], loc['pos']['qf']),
           end='')
     i = 1
     for anch in loc['anchors']:
@@ -579,13 +581,17 @@ def get_dwm_location_or_parrot_data():
             break;
 
         for dwm_fd in dwm_fds:
-            if dwm_fd in rd:
-                loc = receive_dwm_location(dwm_fd)
-                #print_location(loc)
+            if dwm_fd not in rd:
+                continue
 
-                if is_dwm_location_reliable(loc):
-                    received = True
-                    dwm_locs[dwm_fd] = loc
+            loc = receive_dwm_location(dwm_fd)
+            if loc is None:
+                continue
+
+            #print_location(loc)
+            if is_dwm_location_reliable(loc):
+                received = True
+                dwm_locs[dwm_fd] = loc
         if parrot_sock in rd:
             parrot_data = receive_parrot_data_from_sock(parrot_sock)
             if parrot_data is not None:
@@ -614,6 +620,16 @@ def sigint_handler(sig, frame):
     global should_stop, stop_efd
     should_stop = True
     stop_efd.set()
+
+poses = []
+
+def calculate_std(x, y, z):
+    poses.append((x, y, z))
+    if len(poses) > 20:
+        poses.pop(0)
+
+    std = np.std(poses, axis=0)
+    print(">>>>>>>>>>>>>>>>> STD: ", std)
 
 
 if __name__ == '__main__':
@@ -666,6 +682,9 @@ if __name__ == '__main__':
 
         # Invoke distance localization
         x, y, z = droneloc.kf_process_dist(loc)
+
+        #XXX
+        calculate_std(x, y, z)
 
         # PID control
         navigator.navigate_drone(x, y, z)

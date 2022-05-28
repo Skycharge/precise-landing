@@ -40,7 +40,8 @@ class smoother_type(enum.Enum):
     UNIFORM  = 1
     GAUSSIAN = 2
 
-sigma_accel = 0.1
+#XXX need experiments
+sigma_accel = 0.3
 sigma_dist = 0.2
 # Values taken from hovering drone
 #sigma_vel = 0.01
@@ -49,7 +50,7 @@ sigma_vel = 0.05
 sigma_alt = 0.02
 
 # Gate limit in standard deviations
-GATE_LIMIT = 4
+GATE_LIMIT = 6
 
 R_scale = 1
 Q_scale = 1
@@ -232,6 +233,12 @@ class drone_localization():
         z = get_measurements_dist(loc)
         self.kf.update(z, R=R, hx=Hx_6_dist, loc=loc)
 
+        if self.kf.x[4] < 0:
+            print(">>>>>>>>>>>>>>>>>>>>>>>>> DIST: altitude is < 0")
+            self.kf.x = old_x
+            self.kf.P = old_P
+
+
         dist = self.kf.mahalanobis
         if dist > GATE_LIMIT:
             print("innovation DIST is too large: ", self.kf.y)
@@ -254,6 +261,11 @@ class drone_localization():
 
         z = get_measurements_alt(alt)
         self.kf.update(z, R=R, hx=Hx_6_alt)
+
+        if self.kf.x[4] < 0:
+            print(">>>>>>>>>>>>>>>>>>>>>>>>> ALT: altitude is < 0")
+            self.kf.x = old_x
+            self.kf.P = old_P
 
         dist = self.kf.mahalanobis
         if dist > GATE_LIMIT:
@@ -279,6 +291,12 @@ class drone_localization():
 
         z = get_measurements_vel(vel)
         self.kf.update(z, R=R, hx=Hx_6_vel)
+
+        if self.kf.x[4] < 0:
+            print(">>>>>>>>>>>>>>>>>>>>>>>>> VEL: altitude is < 0")
+            self.kf.x = old_x
+            self.kf.P = old_P
+
 
         dist = self.kf.mahalanobis
         if dist > GATE_LIMIT:
