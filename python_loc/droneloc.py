@@ -176,11 +176,6 @@ class drone_localization():
                                                    dt=dt, points=points)
         kf.x = np.array([1, 0, 1, 0, 1, 0])
 
-        # set cov of vel
-        kf.P[1][1] = 0.1
-        kf.P[3][3] = 0.1
-        kf.P[5][5] = 0.1
-
         self.kf = kf
         self.dt = dt
         self.post_smoother = post_smoother
@@ -306,12 +301,9 @@ def get_anchors_coords(anchors):
 
 
 # Taken from https://nbviewer.org/github/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/08-Designing-Kalman-Filters.ipynb
-def NEES(xs, est_xs, Ps):
-    est_err = xs - est_xs
-    err = []
-    for x, p in zip(est_err, Ps):
-        err.append(x.T @ inv(p) @ x)
-    return err
+def NEES(x, est, P):
+    err = x - est
+    return err.T @ inv(P) @ err
 
 
 if __name__ == '__main__':
@@ -344,10 +336,7 @@ if __name__ == '__main__':
     anchors_coords = get_anchors_coords(anchors)
     plt.scatter(anchors_coords[:, 0], anchors_coords[:, 1])
 
-    xs     = []
-    xs_est = []
-    ps     = []
-
+    neeses = []
     n = 0
     prev_true_coords = None
     while True:
@@ -413,10 +402,10 @@ if __name__ == '__main__':
         if coords is None:
             continue
 
-        # Collect estimated and true positions and its covariance matrix
-        xs.append(true_coords)
-        xs_est.append(coords)
-        ps.append(droneloc.kf.P[0:6:2, 0:6:2])
+        # Normalized Estimated Error Squared of the position
+        x = np.array(true_coords)
+        x_est = np.array(coords)
+        neeses.append(NEES(x, x_est, droneloc.kf.P[0:6:2, 0:6:2]))
 
         # Plot true drone position
         plt.plot(true_coords[0], true_coords[1], ',', color='g')
@@ -432,14 +421,13 @@ if __name__ == '__main__':
         n += 1
 
 
-    # Normalized Estimated Error Squared and its mean
-    nees = NEES(np.array(xs), np.array(xs_est), np.array(ps))
-    eps = np.mean(nees)
+    # Normalized Estimated Error Squared mean
+    nees_mean = np.mean(neeses)
 
-    print(f'mean NEES is: {eps:.4f}, ', end='')
+    print('mean NEES is: %.4f, ' % nees_mean, end='')
 
-    # Where 3 is a dimensions of the position
-    if eps < 3:
+    # Where 3 is a dimension of the position
+    if nees_mean < 3:
         print('PASSED')
     else:
         print('FAILED')
