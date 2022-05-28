@@ -23,10 +23,10 @@ from math import cos, sin, sqrt, atan2
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy import array, dot
-from numpy.linalg import pinv
+from numpy.linalg import pinv, inv
 from numpy.random import randn
 import random
-from filterpy.stats import plot_covariance_ellipse
+from filterpy.stats import plot_covariance
 from scipy.linalg import block_diag
 from scipy.ndimage import uniform_filter1d
 from scipy.ndimage import gaussian_filter1d
@@ -47,6 +47,9 @@ sigma_dist = 0.2
 #sigma_alt = 0.005
 sigma_vel = 0.05
 sigma_alt = 0.02
+
+# Gate limit in standard deviations
+GATE_LIMIT = 4
 
 R_scale = 1
 Q_scale = 1
@@ -122,7 +125,7 @@ def Hx_6_dist(x, loc):
         r = np.linalg.norm(pos - anch) + 1e-6
         r_pred.append(r)
 
-    return np.array(r_pred).T
+    return np.array(r_pred)
 
 
 def Hx_6_alt(x):
@@ -131,7 +134,7 @@ def Hx_6_alt(x):
     """
 
     # Altitude, or Z coordinate
-    return np.array([x[4]]).T
+    return np.array([x[4]])
 
 
 def Hx_6_vel(x):
@@ -140,7 +143,7 @@ def Hx_6_vel(x):
     """
 
     # X_6 = [Px, Vx, Py, Vy, Pz, Vz]
-    return np.array([x[1], x[3], x[5]]).T
+    return np.array([x[1], x[3], x[5]])
 
 
 def get_measurements_dist(loc):
@@ -149,15 +152,15 @@ def get_measurements_dist(loc):
         dist = anchor["dist"]["dist"]
         ranges.append(dist)
 
-    return np.array(ranges).T
+    return np.array(ranges)
 
 
 def get_measurements_alt(alt):
-    return np.array([alt['alt']]).T
+    return np.array([alt['alt']])
 
 
 def get_measurements_vel(vel):
-    return np.array(vel['vel']).T
+    return np.array(vel['vel'])
 
 
 class drone_localization():
@@ -234,7 +237,8 @@ class drone_localization():
         z = get_measurements_dist(loc)
         self.kf.update(z, R=R, hx=Hx_6_dist, loc=loc)
 
-        if np.any(np.abs(self.kf.y) > 2):
+        dist = self.kf.mahalanobis
+        if dist > GATE_LIMIT:
             print("innovation DIST is too large: ", self.kf.y)
             self.kf.x = old_x
             self.kf.P = old_P
@@ -256,10 +260,11 @@ class drone_localization():
         z = get_measurements_alt(alt)
         self.kf.update(z, R=R, hx=Hx_6_alt)
 
-        if np.any(np.abs(self.kf.y) > 2):
+        dist = self.kf.mahalanobis
+        if dist > GATE_LIMIT:
             print("innovation ALT is too large: ", self.kf.y)
             print("Z alt [%.3f]" % (z[0]))
-            print("X alt [%.3f]" % (self.kf.x[4]))
+            print("X alt [%.3f]" % (old_x[4]))
             self.kf.x = old_x
             self.kf.P = old_P
 
@@ -280,10 +285,11 @@ class drone_localization():
         z = get_measurements_vel(vel)
         self.kf.update(z, R=R, hx=Hx_6_vel)
 
-        if np.any(np.abs(self.kf.y) > 2):
+        dist = self.kf.mahalanobis
+        if dist > GATE_LIMIT:
             print("innovation VEL is too large: ", self.kf.y)
             print("Z vel [%.3f,%.3f,%.3f]" % (z[0], z[1], z[2]))
-            print("X vel [%.3f,%.3f,%.3f]" % (self.kf.x[1], self.kf.x[3], self.kf.x[5]))
+            print("X vel [%.3f,%.3f,%.3f]" % (old_x[1], old_x[3], old_x[5]))
             self.kf.x = old_x
             self.kf.P = old_P
 
@@ -297,6 +303,15 @@ def get_anchors_coords(anchors):
         coords += [anchor['pos']['coords']]
 
     return np.array(coords)
+
+
+# Taken from https://nbviewer.org/github/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/08-Designing-Kalman-Filters.ipynb
+def NEES(xs, est_xs, Ps):
+    est_err = xs - est_xs
+    err = []
+    for x, p in zip(est_err, Ps):
+        err.append(x.T @ inv(p) @ x)
+    return err
 
 
 if __name__ == '__main__':
@@ -328,6 +343,10 @@ if __name__ == '__main__':
     # Plot anchors
     anchors_coords = get_anchors_coords(anchors)
     plt.scatter(anchors_coords[:, 0], anchors_coords[:, 1])
+
+    xs     = []
+    xs_est = []
+    ps     = []
 
     n = 0
     prev_true_coords = None
@@ -394,6 +413,11 @@ if __name__ == '__main__':
         if coords is None:
             continue
 
+        # Collect estimated and true positions and its covariance matrix
+        xs.append(true_coords)
+        xs_est.append(coords)
+        ps.append(droneloc.kf.P[0:6:2, 0:6:2])
+
         # Plot true drone position
         plt.plot(true_coords[0], true_coords[1], ',', color='g')
 
@@ -402,11 +426,23 @@ if __name__ == '__main__':
 
         if n % 100 == 0:
             # Extract X (Px, Py) and P (Px, Py)
-            plot_covariance_ellipse((coords[0], coords[1]),
-                                    droneloc.kf.P[0:3:2, 0:3:2],
-                                    std=10, facecolor='g', alpha=0.3)
+            plot_covariance((coords[0], coords[1]),
+                            droneloc.kf.P[0:3:2, 0:3:2],
+                            std=10, facecolor='g', alpha=0.3)
         n += 1
 
+
+    # Normalized Estimated Error Squared and its mean
+    nees = NEES(np.array(xs), np.array(xs_est), np.array(ps))
+    eps = np.mean(nees)
+
+    print(f'mean NEES is: {eps:.4f}, ', end='')
+
+    # Where 3 is a dimensions of the position
+    if eps < 3:
+        print('PASSED')
+    else:
+        print('FAILED')
 
     plt.axis('equal')
     plt.show()
