@@ -64,7 +64,7 @@ def create_dwm_sock():
 def send_dwm_data(dwm_sock, loc):
     nr_anchors = len(loc['anchors'])
 
-    fmt = "iiihhiii"
+    fmt = "iiihhhiii"
     buff = ctypes.create_string_buffer(512)
 
     pos = loc['pos']

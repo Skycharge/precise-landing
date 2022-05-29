@@ -335,30 +335,6 @@ class DWMDevice(gatt.Device):
                 self.lock.release()
 
 
-def blend_locations(locs):
-    if len(locs) == 0:
-        return None
-
-    loc = None
-    for l in locs:
-        if l['pos']['valid']:
-            print("Error: can't blend locations with pre-calculated positions")
-            return None
-
-        if loc is None:
-            loc = l
-            continue
-
-        loc['anchors'] += l['anchors']
-
-    #XXX
-    if len(loc['anchors']) > 4:
-        print("ANCHORS: ", len(loc['anchors']))
-
-    return loc
-
-
-
 help = \
 """DWM1001 BLE
 
@@ -416,7 +392,6 @@ if __name__ == '__main__':
         if should_stop:
             break
 
-        locs = {}
         for efd in r:
             tag = manager.find_device_by_efd(efd)
             if not tag:
@@ -428,7 +403,11 @@ if __name__ == '__main__':
             rate = 1 / (now - ts)
             ts = now
             loc = tag.get_location()
-            locs[efd] = loc
+
+            if args['--stream-to-sock']:
+                # We pass through sock integers, not floats
+                coords_and_dist_to_mm(loc)
+                send_dwm_data(dwm_sock, loc)
 
             print("[%04x] XYZ = (%.2fm %.2fm %.2fm) %3.0fHz" % \
                   (tag.node_addr,
@@ -436,14 +415,5 @@ if __name__ == '__main__':
                    loc['pos']['coords'][1],
                    loc['pos']['coords'][2],
                    rate))
-
-        if args['--stream-to-sock']:
-            loc = blend_locations(locs.values())
-            if loc is not None:
-                # We pass through sock integers, not floats
-                coords_and_dist_to_mm(loc)
-                send_dwm_data(dwm_sock, loc)
-
-
 
     manager.stop()

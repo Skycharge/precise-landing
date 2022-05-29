@@ -64,7 +64,7 @@ elif TESTING_STAND == 2:
     #
     # Tags
     #
-    TAG_ADDRS = [0x16fc]
+    TAG_ADDRS = [0x16e9]
 #    TAG_ADDRS = [0x16e9, 0x16fc]
 
     #

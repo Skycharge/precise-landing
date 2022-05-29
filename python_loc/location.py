@@ -91,8 +91,7 @@ class parrot_event_type(enum.Enum):
 pid_components = namedtuple('pid_components', 'Kp Ki Kd')
 
 # Default PID config
-#XXX for 2 tags
-xy_pid_comp  = pid_components(Kp=30,  Ki=0, Kd=50)
+xy_pid_comp  = pid_components(Kp=50,  Ki=0, Kd=100)
 yaw_pid_comp = pid_components(Kp=120, Ki=0, Kd=40)
 pid_limits   = (-100, 100)
 
@@ -598,6 +597,24 @@ def print_location(loc):
         i += 1
     print('')
 
+def blend_dwm_locations(locs):
+    if len(locs) == 0:
+        return None
+
+    loc = None
+    for l in locs:
+        if l['pos']['valid']:
+            print("Error: can't blend locations with pre-calculated positions")
+            return None
+
+        if loc is None:
+            loc = l
+            continue
+
+        loc['anchors'] += l['anchors']
+
+    return loc
+
 def get_dwm_location_or_parrot_data():
     global dwm_fds, nano33_fd, parrot_sock
     global stop_efd
@@ -649,8 +666,8 @@ def get_dwm_location_or_parrot_data():
             nano_data["attitude"] = attitude
             nano_data["ts"] = time.time()
 
-    # Blend locations from multiple tags
-    dwm_loc = dwm1001_ble.blend_locations(dwm_locs.values())
+    # Blend dwm locations from multiple tags
+    dwm_loc = blend_dwm_locations(dwm_locs.values())
 
     return dwm_loc, parrot_data, nano_data
 
@@ -731,7 +748,7 @@ if __name__ == '__main__':
         x, y, z = droneloc.kf_process_dist(loc)
 
         #XXX
-        calculate_std(x, y, z)
+        #calculate_std(x, y, z)
 
         # Set estimated position
         navigator.set_pos(x, y, z)

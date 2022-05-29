@@ -271,7 +271,7 @@ class drone_localization():
         if dist > GATE_LIMIT:
             print("innovation ALT is too large: ", self.kf.y)
             print("Z alt [%.3f]" % (z[0]))
-            print("X alt [%.3f]" % (old_x[4]))
+            print("X alt [%.3f]" % (self.kf.x[4]))
             self.kf.x = old_x
             self.kf.P = old_P
 
@@ -302,7 +302,7 @@ class drone_localization():
         if dist > GATE_LIMIT:
             print("innovation VEL is too large: ", self.kf.y)
             print("Z vel [%.3f,%.3f,%.3f]" % (z[0], z[1], z[2]))
-            print("X vel [%.3f,%.3f,%.3f]" % (old_x[1], old_x[3], old_x[5]))
+            print("X vel [%.3f,%.3f,%.3f]" % (self.kf.x[1], self.kf.x[3], self.kf.x[5]))
             self.kf.x = old_x
             self.kf.P = old_P
 
